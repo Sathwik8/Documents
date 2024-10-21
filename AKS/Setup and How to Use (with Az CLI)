@@ -1,0 +1,81 @@
+Setup and How to Use (with Az CLI)
+
+Follow
+1
+
+Edit
+
+Arjan Kohli
+Apr 19, 2023
+First time setup for Kubectl
+Ensure you have Az CLI installed. If not, follow instructions here: https://learn.microsoft.com/en-us/cli/azure/install-azure-cli 
+
+Log into your Azure account using Azure CLI, use the email you use to login with Azure portal (most likely Accenture email)
+az login
+
+Set the subscription, either Dev-Test or Prod
+
+Either:
+
+$subscriptionId = "e7170284-fbcb-4d38-99a2-04405d2610ce" # Mortgage Cadence
+or $subscriptionId = "cd9a1a04-dbf8-4cb9-89e3-edfae88bf04d" # Mortgage Cadence - DEV
+az account set --subscription $subscriptionId
+
+Install kubectl, which is provided by MSFT in this Az command
+az aks install-cli
+
+Ensure that kubectl exists on the machine. You may have to restart your terminal session for the path to update. If this command fails then ~\.azure-kubectl\ needs to be added to your path. Add this to your User path permanently, and restart your terminal session.
+kubectl
+
+Connecting to a Cluster with Kubectl
+Authenticate to a kubernetes cluster, this will not prompt you immediately for your credentials, but when you run your first kubectl command you will get prompted.
+# Example, Dev-Test cluster used by DevOps
+$ClusterName = "nakstda601"
+$ClusterRG = "nakstda601-rg"
+
+# Get Credentials, this command actually sets up your ~/.kube/config file with your cluster connection info.
+az aks get-credentials --name $ClusterName --resource-group $ClusterRG
+
+# Setup your kubeconfig file to use kubelogin. This is required to authenticate using your Azure Credentials by MSFT
+kubelogin convert-kubeconfig -l azurecli
+
+Potential Errors
+"The Azure Auth Plugin has been Removed"
+image.png
+This error is likely because you need to run "kubelogin convert-kubeconfig -l azurecli". Recent changes to the AKS login process require this step when using Azure CLI.
+"error: no context exists with the name : "clustername""
+image.png
+This error is likely caused because you ran the commands
+$KubeConfigPath = "$Home\.kube\config"
+${env:KUBECONFIG} = $KubeConfigPath
+These commands cause problems with your environment variables and should not be run.
+To fix the issue restart your powershell terminal and start over trying to connect to the cluster.
+Test Some Essential Commands
+# Your kubeconfig file can point to many different clusters. Check and see which one you are actively pointing at.
+kubectl config get-contexts
+
+# If your kubeconfig file is not pointing at the cluster you want, change it now.
+$ClusterName = "nakstda601"
+kubectl config set-context $ClusterName
+
+# Get nodes on the cluster
+kubectl get nodes
+
+# Get nodes on the cluster with more info by adding "-o wide"
+kubectl get nodes -o wide
+
+# Look at the "kube-system" namespace using "-n kube-system"
+kubectl get pods -o wide -n kube-system
+
+Test Some Advanced Commands
+Get a remote powershell session on a container. You can access this if you are an "RBAC Admin".
+# Get the namespace containing the pod you want to launch a shell on
+kubectl get namespace
+$Namespace = "<pick one from above>"
+
+# Get the pod name you want to launch a shell on
+kubectl get pods -n $Namespace
+$Pod = "<pick one from above>"
+
+# Launch a remote powershell session on a container, use "-- powershell" to launch powershell, use "-it" to open an interactive shell.
+kubectl exec -it -n $Namespace $Pod -- powershell
