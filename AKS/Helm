@@ -1,0 +1,98 @@
+Helm
+
+Follow
+1
+
+Edit
+
+Arjan Kohli
+Apr 25, 2023
+About Helm
+Helm  is an open source deployment program used by the Kubernetes community to mange complex deployments. Helm is great at handling applications where a "deployment" actually contains several Kubernetes resources, pod types, and benefits from dynamically customizing the resource definitions for a particular deployment.
+
+Fundamentally, Helm is a template based scripting language and deployment middle-ware.
+
+Why Helm?
+It allows us to easily insert variables and conditional logic into our resource definitions which standardizes the structure of every MCP deployment on AKS.
+It allows us to contain all of the resource definitions required as part of an MCP deployment on AKS in a single cohesive unit that is deployed altogether.
+It is the CNCF de-facto standard for accomplishing these goals above on Kubernetes.
+How MCP Uses Helm
+Helm Charts
+The MCP K8s resources are defined in a single folder in source control called "mcp", which represents our "Helm Chart". The "helm" parent folder exists so that new charts can be easily added as new sub-folders if required.
+
+A Helm Chart represents an application or thing to deploy, and consists of all the resources and template code required to deploy that thing on K8s. The Helm Chart for MCP represents all the instructions and templates requires to deploy 1 single instance of MCP to AKS. This chart can be deployed repeatedly, with unique instance names, in order to deploy many instances of MCP to a cluster(s).
+
+The Offical Helm Documentation on charts concepts and syntax  goes into great detail about how to create and use charts. Below will only focus how MCP utilizes these concepts, and briefly explain + link to documentation where required.
+
+The MCP Helm Chart
+In our "mcp" folder for our MCP chart, you'll see a number of files and folders:
+
+image.png
+
+/templates/ contains all of the K8s resource manifests (.yml files) for the MCP deployment.
+.helmignore acts like a .gitignore file but tells helm what to ignore for a deployment to K8s. More official info here .
+.Chart.yaml contains metadata that Helm requires to recognize that the folder is a chart. More offical info here .
+values.yaml contains a list of available chart variables (used in the template files) and their default values (which can be overwritten during a deployment). More official info here .
+Helm Templatization
+If you look at our /templates/deployment-svc-sync.yml file you will see a typical K8s resource definition, but with some interesting statements in braces.
+
+image.png
+
+This is a template file in Helm. When helm performs a deployment it checks everything in the templates folder and it parses everything inside of any {{ }}'s it finds in these files.
+
+Another nice example is our /templates/network-policy.yml file.
+
+image.png
+
+The explanations below will refer to these and other examples.
+
+Variables in Templates
+Again here is the services sync deployment template.
+
+image.png
+
+Focus on line 9. Here we have the statement replicas: {{ .Values.replicaCount.svcSync }}. This is referring to a parameter that is passed during a deployment (its default value if not passed is also defined in the values.yaml file. When helm deploys this file as part of the MCP chart, it recognizes that the statement in braces needs to be parsed. It then replaces this with the value that it has for this variable, and results in something such as replicas: 3 when the deployment is finished on AKS.
+
+Similarly, at line 24 we have the statement image: "{{ .Values.image.acrServer }}/mcp-{{ .Values.image.tenantImageName }}-svc-sync:{{ .Values.image.tag }}". Here we are referring to a number of different parameters that are passed during a deployment, and concatenating these together (with /'s and -'s in the correct places) to form the full image name for the sync service deployment. This would result in something such as image: "dacrtda.azurecr.io/mcp-tda-dev-01-svc-sync:2019-foo-bar-12345
+
+One interesting variable that is a little different from the ones above is the namespace variable we use. Look again at our /templates/network-policy.yml file.
+
+image.png
+
+At line 14, notice this is actually referred to as {{ .Release.Namespace }} and not {{ .Values.Namespace }}. This is because when a Helm chart is deployed, .Release.Namespace is one of the standard, built-in variables, that all Helm charts possess. We also pass this value at deployment time, just like the other values above.
+
+For more info on variables in templates, please see official docs .
+
+Conditional Logic in Templates
+Again looking back at the services sync deployment template.
+
+image.png
+
+At line 1 you see the statement {{ if has "svc-sync" .Values.pods }}, as well as {{ end }} at line 57. When Helm parses this template, it treats everything inside this if/end block as conditional. If the conditional statement {{ if has "svc-sync" .Values.pods }} is true, then Helm will insert everything inside the block (lines 2 - 56) into the file. When this statement is false, Helm actually excludes these lines and the file ends up resulting as an empty file.
+
+We have a list here, .Values.pods which contains all the pod types used for MCP. This list can vary depending if we are using the combined/main container models. Notice that we have a similar if condition in all our container deployment type files so that each MCP deployment only results in the pod types required. Example, in a combined container model, this list is "combined", but in the standard model this list is "bos, svc-multiple, svc-single, svc-sync, web". A combined deployment will only deploy combined, and a standard deployment will deploy all 5 pod types.
+
+Another example of conditional logic being used is here in our ingress rules.
+image.png
+
+Notice that we have several if/else/end blocks that conditionally define what the ingress rules look like. In the standard container models we have 2 different URLs and K8s IP services that are used. In the combined or main models we only have 1 URL and K8s IP Service to route to. The conditional logic in this ingress file allow us to handle this neatly in one file.
+
+For more info on flow control in templates, please see official docs .
+
+MCP Chart Deployments
+So far we've gone into detail about what the MCP chart looks like. Now lets look at how to deploy and use the chart.
+
+In octopus we use this inline script to deploy an MCP instance.
+
+image.png
+
+At line 23 here begins a helm command followed by several lines broken out from 23-43.
+
+The command, helm upgrade --install will create/update a new/existing helm deployment of some chart.
+helm upgrade --install $Namespace we are specifying the Chart name to be the value of the powershell variable $Namespace. We are reusing this variable since it is unique for every deployment and provides us a unique name for our chart.
+./MCP.OctopusModules/AzureKubernetes/helm/mcp/ refers to the folder path containing our Helm chart definition. This tells helm what chart to deploy.
+--values ./MCP.OctopusModules/AzureKubernetes/helm/mcp/values.yaml feeds helm the names and default values to use for all chart variables.
+--kube-context $ClusterName tells Helm what cluster to deploy on.
+--namespace $Namespace tells Helm what namespace to deploy the chart (and all its resources) in.
+--create-namespace tells Helm to create the namespace if it doesn't already exist.
+Finally, the lines that follow set and pass in all of the variable values in the Helm chart from Octopus during deployment time.
