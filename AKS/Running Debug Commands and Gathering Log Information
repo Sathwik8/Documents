@@ -1,0 +1,89 @@
+Running Debug Commands and Gathering Log Information
+
+Follow
+1
+
+Edit
+
+Riordan, John
+Apr 6, 2023
+There are a number of instances where you may want to run a debug script and grab files/log information from a cluster. Here are a few different scenarios, and steps to accomplish this.
+
+Viewing Container Logs
+Running Scripts and Grabbing Files from a Windows Node (VM Host)
+1) Connecting to the node to run scripts.
+In cluster properties there is a link to the underlying AKS resources.
+image.png
+
+In the RG navigated to above, there is the Windows VMSS (aks***w).
+image.png
+
+Go to the VM instances in the scaleset, and pick an instance you need to connect with VIA Bastion
+image.png
+
+The credentials here are protected inside the "xsecretkvmc401 " or "xsecretkvdevmc601 " keyvaults. There is a secret called "AksWindowsAdminUser" which contains the username and password to use to login.
+
+image.png
+
+Once you are connected, you have a CMD session. Type Powershell if you need a powershell session, and run whatever commands you need to run.
+image.png
+
+2) Grabbing Files from the VM
+If you need to grab files from the VM to share with others and use locally for debug purposes, then you can use "SCP" to copy the files.
+
+Note: Because the MC networks block ping and ssh to most internal VMs, you have to run these commands from your jump box or VPN and download the files from the AKS Node. AKS Nodes live on Microsofts Network Domain, so you can't run SCP from inside the AKS Node because MC networks block the connection attempt from the outside.
+
+Log into your jump box (NOT the AKS Node), or connect to the MC VPN from your local machine.
+Use SCP from your local machine to download the remote file:
+scp -r Aksadmin@<aks-node-ip-address>:/<path-on-aks-node-to-file-or-directory> ./<path-on-your-machine>
+Example:
+
+I want to download this file release-notes.txt from the C:\ directory off this AKS VM shown below.
+image.png
+
+In order to download this file, I need:
+
+The IP of the AKS node I'm connected to, you can see this in azure on the VM.
+The Aks Admin Login info
+The path and/or filename on the AKS node I want to download
+Some local path on my machine to download to
+Once I have all this info, I can put together an SCP command like this, and run it from my local machine,
+
+scp -r Aksadmin@10.10.195.65:/release-notes.txt ./
+
+This command downloads the file C:\release-notes.txt from the AKS node, and places it on my local machine in ./, which is the current folder I'm in on the command line.
+image.png
+
+The same thing would work if for example I wanted to grab a whole folder, though the command may timeout if im trying to download many files at once, so you may need to zip the folder first  if grabbing a lot of files.
+
+Running Scripts and Grabbing Files from a Container/Pod
+1) Connecting to Container and Running scripts
+Running scripts on a container is best done with kubectl.
+
+This kubectl command opens up a powershell terminal session on a MCP pod.
+
+kubectl exec -it -n $Namespace $Pod -- powershell
+
+Once you are on the container you can run whatever powershell scripts you like.
+
+2) Grabbing Files from a Container
+If you need to grab files from an MCP container to your local, you can also use kubectl.
+
+This kubectl command downloads a file/directory from the pod, it places it on your local machine.
+kubectl cp <pod-name>:/<path-on-container-to-file-or-directory> ./<path-on-local-machine-to-place-file>
+
+For more info on kubectl cp, run kubectl cp --help
+
+Example:
+
+I want to grab a folder C:\LogMonitor and a file C:\License.txt from an MCP web container belonging to "TDK" in dev.
+
+I went to the azure portal and found that the pod with the container I want to grab a file from is called "web-deployment-5bbccfd66f-zjmd9", and the namespace its in is "tdk-dev-01"
+
+I will run these commands to grab the data:
+kubectl cp -n tdk-dev-01 web-deployment-5bbccfd66f-zjmd9:/LogMonitor ./container-drop/LogMonitor
+kubectl cp -n tdk-dev-01 web-deployment-5bbccfd66f-zjmd9:/License.txt ./container-drop/License.txt
+
+These commands will create a new folder for me called "container-drop" inside the current folder my powershell terminal is in, and it will copy the contents of the folder C:\LogMonitor and the C:\License.txt file from the container onto my local machine.
+
+image.png
